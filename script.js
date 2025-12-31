@@ -741,6 +741,9 @@ function play(type, id) {
 }
 
 // TV Player (Kanallar uchun)
+// HLS player instance
+let hlsPlayer = null;
+
 function playChannel(id) {
     const idx = channels.findIndex(c => c.id === id || c.id === String(id));
     if (idx === -1) return;
@@ -755,9 +758,33 @@ function playChannel(id) {
     renderTvChannelsList();
     
     const tvVideo = $('tv-video');
+    
+    // Oldingi HLS ni to'xtatish
+    if (hlsPlayer) {
+        hlsPlayer.destroy();
+        hlsPlayer = null;
+    }
+    
     if (ch.url) {
-        tvVideo.src = ch.url;
-        tvVideo.play().catch(() => {});
+        // HLS stream uchun
+        if (ch.url.includes('.m3u8')) {
+            if (Hls.isSupported()) {
+                hlsPlayer = new Hls();
+                hlsPlayer.loadSource(ch.url);
+                hlsPlayer.attachMedia(tvVideo);
+                hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
+                    tvVideo.play().catch(() => {});
+                });
+            } else if (tvVideo.canPlayType('application/vnd.apple.mpegurl')) {
+                // Safari uchun
+                tvVideo.src = ch.url;
+                tvVideo.play().catch(() => {});
+            }
+        } else {
+            // Oddiy video
+            tvVideo.src = ch.url;
+            tvVideo.play().catch(() => {});
+        }
         $('tv-play-icon').setAttribute('data-lucide', 'pause');
     }
     
@@ -867,9 +894,31 @@ function switchChannel(index) {
     $('tv-channel-logo').src = ch.logo;
     
     const tvVideo = $('tv-video');
+    
+    // Oldingi HLS ni to'xtatish
+    if (hlsPlayer) {
+        hlsPlayer.destroy();
+        hlsPlayer = null;
+    }
+    
     if (ch.url) {
-        tvVideo.src = ch.url;
-        tvVideo.play().catch(() => {});
+        // HLS stream uchun
+        if (ch.url.includes('.m3u8')) {
+            if (Hls.isSupported()) {
+                hlsPlayer = new Hls();
+                hlsPlayer.loadSource(ch.url);
+                hlsPlayer.attachMedia(tvVideo);
+                hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
+                    tvVideo.play().catch(() => {});
+                });
+            } else if (tvVideo.canPlayType('application/vnd.apple.mpegurl')) {
+                tvVideo.src = ch.url;
+                tvVideo.play().catch(() => {});
+            }
+        } else {
+            tvVideo.src = ch.url;
+            tvVideo.play().catch(() => {});
+        }
         $('tv-play-icon').setAttribute('data-lucide', 'pause');
     }
     
@@ -905,6 +954,12 @@ function toggleTvFullscreen() {
 }
 
 function closeTvPlayer() {
+    // HLS ni to'xtatish
+    if (hlsPlayer) {
+        hlsPlayer.destroy();
+        hlsPlayer = null;
+    }
+    
     const tvVideo = $('tv-video');
     tvVideo.pause();
     tvVideo.src = '';
