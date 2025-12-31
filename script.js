@@ -1,3 +1,11 @@
+// Download modal yopish
+function closeDownloadModal() {
+    const modal = document.getElementById('download-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
 // Data - 162 ta kanal (Aqlvoy'siz)
 const channels = [
     { id: "ch_2", name: "BIZ Cinema", desc: "Jonli efir", url: "https://fl.biztv.media/cinema_720_EMfSyXgoRdiIHgldXTZICucKTIeCKO/index.m3u8", logo: "https://biztv.uz/static/media/biz-cinema.286b83dc.png", quality: "HD" },
