@@ -1,8 +1,47 @@
+// Download modal state
+let downloadModalFocus = 0; // 0 = APK yuklab olish, 1 = Saytda davom etish
+
 // Download modal yopish
 function closeDownloadModal() {
     const modal = document.getElementById('download-modal');
     if (modal) {
         modal.classList.add('hidden');
+    }
+}
+
+// Download modal ochiqmi tekshirish
+function isDownloadModalOpen() {
+    const modal = document.getElementById('download-modal');
+    return modal && !modal.classList.contains('hidden');
+}
+
+// Download modal focus yangilash
+function updateDownloadModalFocus() {
+    const buttons = document.querySelectorAll('#download-modal .modal-btn');
+    buttons.forEach((btn, i) => {
+        if (i === downloadModalFocus) {
+            btn.classList.add('ring-4', 'ring-white');
+        } else {
+            btn.classList.remove('ring-4', 'ring-white');
+        }
+    });
+}
+
+// Download modal navigatsiya
+function navigateDownloadModal(dir) {
+    if (dir === 'up') {
+        downloadModalFocus = 0;
+    } else if (dir === 'down') {
+        downloadModalFocus = 1;
+    }
+    updateDownloadModalFocus();
+}
+
+// Download modal tanlash
+function selectDownloadModal() {
+    const buttons = document.querySelectorAll('#download-modal .modal-btn');
+    if (buttons[downloadModalFocus]) {
+        buttons[downloadModalFocus].click();
     }
 }
 
@@ -208,6 +247,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initHeroCarousel();
     setupKeyboard();
     updateFocus();
+    // Download modal focus
+    updateDownloadModalFocus();
 });
 
 // Hero Carousel
@@ -451,8 +492,7 @@ function updateFocus() {
     updateSidebar();
     
     if (!$('player').classList.contains('hidden')) {
-        const btns = [$('rew'), $('playpause'), $('fwd')];
-        btns[playerFocus]?.classList.add('ring-4', 'ring-white');
+        updatePlayerFocus();
         return;
     }
     
@@ -471,6 +511,19 @@ function updateFocus() {
             card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
         }
     }
+}
+
+// Movie player focus yangilash
+function updatePlayerFocus() {
+    const btns = [$('rew'), $('playpause'), $('fwd'), $('movie-exit')];
+    btns.forEach((btn, i) => {
+        if (btn) {
+            btn.classList.remove('ring-4', 'ring-white');
+            if ((i < 3 && playerFocus === i) || (i === 3 && playerFocus === 4)) {
+                btn.classList.add('ring-4', 'ring-white');
+            }
+        }
+    });
 }
 
 function navigate(dir) {
@@ -716,6 +769,9 @@ function select() {
 }
 
 // Player (Kino uchun)
+// Movie HLS player instance
+let movieHlsPlayer = null;
+
 function play(type, id) {
     if (type === 'channel') {
         playChannel(id);
@@ -730,9 +786,39 @@ function play(type, id) {
     $('player').classList.remove('hidden');
     playerFocus = 1;
     
+    // Oldingi HLS ni to'xtatish
+    if (movieHlsPlayer) {
+        movieHlsPlayer.destroy();
+        movieHlsPlayer = null;
+    }
+    
+    // Loading ko'rsatish
+    showMovieLoading();
+    
+    // Video yuklanganda loading yashirish
+    video.oncanplay = () => hideMovieLoading();
+    video.onwaiting = () => showMovieLoading();
+    video.onplaying = () => hideMovieLoading();
+    
     if (item.url) {
-        video.src = item.url;
-        video.play().catch(() => {});
+        // HLS stream uchun
+        if (item.url.includes('.m3u8')) {
+            if (Hls.isSupported()) {
+                movieHlsPlayer = new Hls();
+                movieHlsPlayer.loadSource(item.url);
+                movieHlsPlayer.attachMedia(video);
+                movieHlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play().catch(() => {});
+                });
+                movieHlsPlayer.on(Hls.Events.ERROR, () => hideMovieLoading());
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = item.url;
+                video.play().catch(() => {});
+            }
+        } else {
+            video.src = item.url;
+            video.play().catch(() => {});
+        }
         $('play-icon').setAttribute('data-lucide', 'pause');
     }
     lucide.createIcons();
@@ -743,6 +829,23 @@ function play(type, id) {
 // TV Player (Kanallar uchun)
 // HLS player instance
 let hlsPlayer = null;
+
+// Loading funksiyalari
+function showTvLoading() {
+    $('tv-loading')?.classList.remove('hidden');
+}
+
+function hideTvLoading() {
+    $('tv-loading')?.classList.add('hidden');
+}
+
+function showMovieLoading() {
+    $('movie-loading')?.classList.remove('hidden');
+}
+
+function hideMovieLoading() {
+    $('movie-loading')?.classList.add('hidden');
+}
 
 function playChannel(id) {
     const idx = channels.findIndex(c => c.id === id || c.id === String(id));
@@ -765,6 +868,14 @@ function playChannel(id) {
         hlsPlayer = null;
     }
     
+    // Loading ko'rsatish
+    showTvLoading();
+    
+    // Video yuklanganda loading yashirish
+    tvVideo.oncanplay = () => hideTvLoading();
+    tvVideo.onwaiting = () => showTvLoading();
+    tvVideo.onplaying = () => hideTvLoading();
+    
     if (ch.url) {
         // HLS stream uchun
         if (ch.url.includes('.m3u8')) {
@@ -775,13 +886,12 @@ function playChannel(id) {
                 hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
                     tvVideo.play().catch(() => {});
                 });
+                hlsPlayer.on(Hls.Events.ERROR, () => hideTvLoading());
             } else if (tvVideo.canPlayType('application/vnd.apple.mpegurl')) {
-                // Safari uchun
                 tvVideo.src = ch.url;
                 tvVideo.play().catch(() => {});
             }
         } else {
-            // Oddiy video
             tvVideo.src = ch.url;
             tvVideo.play().catch(() => {});
         }
@@ -838,7 +948,9 @@ function updateTvFocus() {
     document.querySelectorAll('.tv-btn').forEach(el => el.classList.remove('ring-4', 'ring-white'));
     document.querySelectorAll('.tv-channel-item').forEach(el => el.classList.remove('ring-2', 'ring-purple-400'));
     
-    if (tvFocus.area === 'controls') {
+    if (tvFocus.area === 'exit') {
+        $('tv-exit')?.classList.add('ring-4', 'ring-white');
+    } else if (tvFocus.area === 'controls') {
         const btns = [$('tv-playpause'), $('tv-fullscreen')];
         btns[tvFocus.index]?.classList.add('ring-4', 'ring-white');
     } else if (tvFocus.area === 'channels') {
@@ -851,7 +963,11 @@ function updateTvFocus() {
 function navigateTv(dir) {
     showTvOverlay();
     
-    if (tvFocus.area === 'controls') {
+    if (tvFocus.area === 'exit') {
+        // X tugmasida
+        if (dir === 'down') tvFocus = { area: 'controls', index: 0 };
+        if (dir === 'right') tvFocus = { area: 'channels', index: currentChannelIndex };
+    } else if (tvFocus.area === 'controls') {
         if (dir === 'left') tvFocus.index = Math.max(0, tvFocus.index - 1);
         if (dir === 'right') {
             if (tvFocus.index < 1) {
@@ -860,11 +976,8 @@ function navigateTv(dir) {
                 tvFocus = { area: 'channels', index: currentChannelIndex };
             }
         }
-        if (dir === 'up' || dir === 'down') {
-            if (dir === 'up') currentChannelIndex = Math.max(0, currentChannelIndex - 1);
-            if (dir === 'down') currentChannelIndex = Math.min(channels.length - 1, currentChannelIndex + 1);
-            switchChannel(currentChannelIndex);
-        }
+        if (dir === 'up') tvFocus = { area: 'exit', index: 0 };
+        if (dir === 'down') tvFocus = { area: 'controls', index: tvFocus.index };
     } else if (tvFocus.area === 'channels') {
         if (dir === 'left') tvFocus = { area: 'controls', index: 1 };
         if (dir === 'up') tvFocus.index = Math.max(0, tvFocus.index - 1);
@@ -877,7 +990,9 @@ function navigateTv(dir) {
 function selectTv() {
     showTvOverlay();
     
-    if (tvFocus.area === 'controls') {
+    if (tvFocus.area === 'exit') {
+        closeTvPlayer();
+    } else if (tvFocus.area === 'controls') {
         if (tvFocus.index === 0) toggleTvPlay();
         if (tvFocus.index === 1) toggleTvFullscreen();
     } else if (tvFocus.area === 'channels') {
@@ -901,6 +1016,9 @@ function switchChannel(index) {
         hlsPlayer = null;
     }
     
+    // Loading ko'rsatish
+    showTvLoading();
+    
     if (ch.url) {
         // HLS stream uchun
         if (ch.url.includes('.m3u8')) {
@@ -911,6 +1029,7 @@ function switchChannel(index) {
                 hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
                     tvVideo.play().catch(() => {});
                 });
+                hlsPlayer.on(Hls.Events.ERROR, () => hideTvLoading());
             } else if (tvVideo.canPlayType('application/vnd.apple.mpegurl')) {
                 tvVideo.src = ch.url;
                 tvVideo.play().catch(() => {});
@@ -971,8 +1090,15 @@ function closeTvPlayer() {
 }
 
 function closePlayer() {
+    // HLS ni to'xtatish
+    if (movieHlsPlayer) {
+        movieHlsPlayer.destroy();
+        movieHlsPlayer = null;
+    }
+    
     video.pause();
     video.src = '';
+    hideMovieLoading();
     $('player').classList.add('hidden');
     $('play-icon').setAttribute('data-lucide', 'play');
     lucide.createIcons();
@@ -1020,6 +1146,18 @@ function setupKeyboard() {
     document.addEventListener('keydown', e => {
         e.preventDefault();
         
+        // Download modal ochiq bo'lsa
+        if (isDownloadModalOpen()) {
+            switch(e.key) {
+                case 'ArrowUp': navigateDownloadModal('up'); break;
+                case 'ArrowDown': navigateDownloadModal('down'); break;
+                case 'Enter': selectDownloadModal(); break;
+                case 'Escape':
+                case 'Backspace': closeDownloadModal(); break;
+            }
+            return;
+        }
+        
         // TV Player ochiq bo'lsa
         if (!$('tv-player').classList.contains('hidden')) {
             switch(e.key) {
@@ -1038,19 +1176,28 @@ function setupKeyboard() {
         // Movie Player ochiq bo'lsa
         if (!$('player').classList.contains('hidden')) {
             switch(e.key) {
-                case 'ArrowLeft': playerFocus = Math.max(0, playerFocus - 1); break;
-                case 'ArrowRight': playerFocus = Math.min(2, playerFocus + 1); break;
+                case 'ArrowUp': playerFocus = 4; break; // X tugmasi
+                case 'ArrowDown': playerFocus = 1; break; // Play tugmasi
+                case 'ArrowLeft': 
+                    if (playerFocus === 4) playerFocus = 4;
+                    else playerFocus = Math.max(0, playerFocus - 1); 
+                    break;
+                case 'ArrowRight': 
+                    if (playerFocus === 4) playerFocus = 4;
+                    else playerFocus = Math.min(2, playerFocus + 1); 
+                    break;
                 case 'Enter': 
                     if (playerFocus === 0) video.currentTime -= 10;
                     if (playerFocus === 1) togglePlay();
                     if (playerFocus === 2) video.currentTime += 10;
+                    if (playerFocus === 4) closePlayer();
                     break;
                 case ' ': togglePlay(); break;
                 case 'Escape':
                 case 'Backspace': closePlayer(); break;
             }
             showPlayerUI();
-            updateFocus();
+            updatePlayerFocus();
             return;
         }
         
